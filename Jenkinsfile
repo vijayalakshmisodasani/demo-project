@@ -20,15 +20,30 @@ pipeline {
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Stop Old Container / Free Port') {
             steps {
                 sh '''
-                    echo "Cleaning up old container if it exists..."
-                    docker rm -f demo-app || true
+                    echo "Checking for existing container on port 9090..."
+                    container_id=$(docker ps -q --filter "name=demo-app")
 
-                    echo "Running new Docker container on port 9090..."
-                    docker run -d -p 9090:8080 --name demo-app demo-app
+                    if [ ! -z "$container_id" ]; then
+                        echo "Stopping and removing existing container..."
+                        docker stop demo-app || true
+                        docker rm demo-app || true
+                    fi
+
+                    port_in_use=$(lsof -i:9090 -t || true)
+                    if [ ! -z "$port_in_use" ]; then
+                        echo "Port 9090 is in use by PID $port_in_use. Killing..."
+                        kill -9 $port_in_use || true
+                    fi
                 '''
+            }
+        }
+
+        stage('Run Docker Container') {
+            steps {
+                sh 'docker run -d -p 9090:8080 --name demo-app demo-app'
             }
         }
     }

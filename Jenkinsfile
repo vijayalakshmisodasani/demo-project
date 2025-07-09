@@ -1,6 +1,13 @@
 pipeline {
     agent any
 
+    environment {
+        CONTAINER_NAME = 'demo-app'
+        DOCKER_IMAGE = 'demo-app'
+        HOST_PORT = '9090'
+        CONTAINER_PORT = '8080'
+    }
+
     stages {
         stage('Clone Repo') {
             steps {
@@ -19,27 +26,25 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 echo "🐳 Building Docker image..."
-                sh 'docker build -t demo-app .'
+                sh "docker build -t ${DOCKER_IMAGE} ."
             }
         }
 
         stage('Stop Old Container / Free Port') {
             steps {
-                echo "🧹 Cleaning up existing container and freeing port 9090..."
+                echo "🧹 Cleaning up existing container and freeing port ${HOST_PORT}..."
                 sh '''
-                    # Check for any existing container named demo-app (even if stopped)
+                    # Stop and remove container if it exists
                     container_exists=$(docker ps -a -q -f name=^/demo-app$)
-
                     if [ ! -z "$container_exists" ]; then
-                        echo "Stopping and removing existing demo-app container..."
+                        echo "Stopping and removing existing container..."
                         docker rm -f demo-app || true
                     fi
 
-                    # Check if port 9090 is used by any process and kill it
-                    port_in_use=$(lsof -i:9090 -t || true)
-
+                    # Kill any process using the HOST_PORT
+                    port_in_use=$(lsof -i:${HOST_PORT} -t || true)
                     if [ ! -z "$port_in_use" ]; then
-                        echo "Killing process using port 9090 (PID: $port_in_use)..."
+                        echo "Port ${HOST_PORT} is used by PID ${port_in_use}. Killing..."
                         kill -9 $port_in_use || true
                     fi
                 '''
@@ -48,19 +53,18 @@ pipeline {
 
         stage('Run Docker Container') {
             steps {
-                echo "🚀 Running new container on port 9090..."
-                sh 'docker run -d -p 9090:8080 --name demo-app demo-app'
+                echo "🚀 Running new container on port ${HOST_PORT}..."
+                sh "docker run -d -p ${HOST_PORT}:${CONTAINER_PORT} --name ${CONTAINER_NAME} ${DOCKER_IMAGE}"
             }
         }
     }
 
     post {
         success {
-            echo '✅ Pipeline completed successfully!'
+            echo "✅ Build and deployment successful! App running at http://<your-ip>:${HOST_PORT}"
         }
         failure {
-            echo '❌ Pipeline failed. Check console output for details.'
+            echo "❌ Pipeline failed. Check the logs for details."
         }
     }
 }
-
